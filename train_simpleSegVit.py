@@ -53,7 +53,6 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-
 def train():
     pass
 
@@ -135,17 +134,26 @@ def main():
 
     # --------- load a dataset ------------------------------------
     # TODO: build dataset
-    # train_dataset = ADE20KDataset(data_root='./data/ADEChallengeData2016',
-    #                               data_prefix=dict(img_path='images/training', seg_map_path='annotations/training'),
-    #                               img_suffix='.jpg',
-    #                               seg_map_suffix='.png', pipeline=cfg.get('train_pipeline'))
-    valid_data = ade20k_dataset(config_path=args.config, mode='valid')
+    train_data = ade20k_dataset(args.config, mode='train')
+    train_loader = DataLoader(train_data,
+                            num_workers=1,
+                            batch_size=4,
+                            shuffle=True,
+                            drop_last=True,
+                            pin_memory=True)
+    valid_data = ade20k_dataset(args.config, mode='valid')
     valid_loader = DataLoader(valid_data,
-                            num_workers=32,
-                            batch_size=args.batch_size,
+                            num_workers=1,
+                            batch_size=1,
                             shuffle=False,
                             drop_last=False,
                             pin_memory=True)
+
+    for img in train_loader:
+        break
+
+    for img in valid_loader:
+        break
     
 
     # --------- optimizers ------------------------------------
@@ -158,7 +166,7 @@ def main():
     else:
         raise ValueError(f'Unknown optimizer: {args.optimizer}')
 
-    optimizer = args.optimizer(simple_segvit.parameters(), lr=args.lr)
+    # optimizer = args.optimizer(simple_segvit.parameters(), lr=args.lr)
 
     # --------- training loop ------------------------------------
     # TODO
