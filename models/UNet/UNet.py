@@ -37,12 +37,19 @@ class UNet(nn.Module):
         
         self.Maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
 
+        # down
         self.conv1 = conv_block(input=input, output=64)
         self.conv2 = conv_block(input=64, output=128)
         self.conv3 = conv_block(input=128, output=256)
         self.conv4 = conv_block(input=256, output=512)
         self.conv5 = conv_block(input=512, output=1024)
 
+        # bottle neck
+        self.bot1 = conv_block(input=1024, output=2048)
+        self.bot2 = conv_block(input=2048, output=2048)
+        self.bot3 = conv_block(input=2048, output=1024)
+
+        # up
         self.up5 = up_conv(input=1024, output=512)
         self.up_conv5 = conv_block(input=1024, output=512)
 
@@ -73,6 +80,11 @@ class UNet(nn.Module):
 
         x5 = self.Maxpool(x4)
         x5 = self.conv5(x5)
+
+        # bottle neck
+        x5 = self.bot1(x5)
+        x5 = self.bot2(x5)
+        x5 = self.bot3(x5)
 
         # decoding + concat path
         d5 = self.up5(x5)
