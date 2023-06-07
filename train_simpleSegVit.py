@@ -11,15 +11,15 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-import mmcv
 from mmengine import Config
 from mmengine.runner import Runner
 from mmseg.apis import inference_model
 from mmseg.models import build_segmentor
-from mmseg.datasets import ADE20KDataset
 
 from decode_heads import atm_head
 from dataset.ade20k_dataset import ade20k_dataset
+
+from losses.atm_loss import ATMLoss
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -36,10 +36,10 @@ def parse_args():
     parser.add_argument('--seed', default=1, type=int, help='manual seed')
     # ---------------------- encoder ----------------------
     parser.add_argument('--shrink_idx', default=-1, type=int, help='the layer to shrink')
-    parser.add_argument('--img_size', default=512, type=int, help='the image size')
+    parser.add_argument('--img_size', default=640, type=int, help='the image size')
     parser.add_argument('--encoder_in_channels', default=3, type=int, help='the input channels of encoder')
     parser.add_argument('--encoder_embed_dims', default=1024, type=int, help='the embedding dimension of encoder')
-    parser.add_argument('--encoder_num_layers', default=12, type=int, help='number of layers of encoder')
+    parser.add_argument('--encoder_num_layers', default=6, type=int, help='number of layers of encoder')
     parser.add_argument('--encoder_num_heads', default=8, type=int, help='number of head of encoder')
     # out_indices (list | int) Output from which stages.
     parser.add_argument('--drop_path_rate', default=0., type=float, help='stochastic depth rate')
@@ -53,8 +53,14 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def train():
-    pass
+def train(teacher, student, img, label, device):
+    img = img.to(device)
+    label = label.to(device)
+    with torch.no_grad():
+        teacher_pred = teacher(img)
+        student_pred = student(img)
+    loss_module = ATMLoss(num_classes=150, dec_layers=len(student.encoder.out_indices), loss_weight=1.0)
+    loss_module(teacher_pred, label, 0)
 
 def main():
     args = parse_args()
@@ -65,8 +71,8 @@ def main():
     else:
         assert False, 'Using CPU.'
     
-    out_indices = -1
-    use_stages = 1
+    out_indices = [2, 5]
+    use_stages = 2
 
     if args.model_dir != '':
         # load model and continue training from checkpoint
@@ -137,7 +143,7 @@ def main():
     train_data = ade20k_dataset(args.config, mode='train')
     train_loader = DataLoader(train_data,
                             num_workers=1,
-                            batch_size=4,
+                            batch_size=args.batch_size,
                             shuffle=True,
                             drop_last=True,
                             pin_memory=True)
@@ -149,10 +155,11 @@ def main():
                             drop_last=False,
                             pin_memory=True)
 
-    for img in train_loader:
-        break
+    # for img, label in train_loader:
+    #     break
 
-    for img in valid_loader:
+    for img, label in valid_loader:
+        train(teacher, simple_segvit, img, label, device)
         break
     
 
