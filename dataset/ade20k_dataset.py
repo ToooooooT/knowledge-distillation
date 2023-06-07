@@ -42,15 +42,15 @@ class ade20k_dataset(Dataset):
             transform = transforms.Compose([
                 transforms.Resize((640, 640), antialias=True)
             ])
-        img = transform(img)
-        print(img.shape)
-        print(type(img))
-        return img
+        return transform(img)
     
     def get_label(self, index):
         label_path = self.data[index]['seg_map_path']
         label = torchvision.io.read_image(label_path)
-        return label
+        transform = transforms.Compose([
+            transforms.Resize((640, 640), antialias=True)
+        ])
+        return transform(label)
 
     def __getitem__(self, index):
         if self.mode == 'train' or self.mode == 'valid':

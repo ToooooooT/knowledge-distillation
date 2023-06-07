@@ -102,8 +102,7 @@ class ViTEncoder(VisionTransformer):
             inputs: expected shape (B, C, H, W)
         Returns:
             out:
-        '''
-        '''
+
         B: batch_size
         L: h * w / (patch_size ^ 2)
         C: embed_dim
