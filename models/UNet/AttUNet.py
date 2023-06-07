@@ -61,7 +61,7 @@ class attention_block(nn.Module):
         return x*psi
 
 class AttUNet(nn.Module):
-    def __init__(self, input=3, output=1):
+    def __init__(self, input=3, output=150):
         super(AttUNet, self).__init__()
         
         self.Maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
@@ -71,17 +71,17 @@ class AttUNet(nn.Module):
         self.conv2 = conv_block(input=64, output=128)
         self.conv3 = conv_block(input=128, output=256)
         self.conv4 = conv_block(input=256, output=512)
-        self.conv5 = conv_block(input=512, output=1024)
+        # self.conv5 = conv_block(input=512, output=1024)
 
         # bottle neck
-        self.bot1 = conv_block(input=1024, output=2048)
-        # self.bot2 = conv_block(input=2048, output=2048)
-        self.bot3 = conv_block(input=2048, output=1024)
+        self.bot1 = conv_block(input=512, output=1024)
+        self.bot2 = conv_block(input=1024, output=1024)
+        self.bot3 = conv_block(input=1024, output=512)
 
         # up
-        self.up5 = up_conv(input=1024, output=512)
-        self.att5 = attention_block(F_g=512, F_l=512, F_int=256)
-        self.up_conv5 = conv_block(input=1024, output=512)
+        # self.up5 = up_conv(input=1024, output=512)
+        # self.att5 = attention_block(F_g=512, F_l=512, F_int=256)
+        # self.up_conv5 = conv_block(input=1024, output=512)
 
         self.up4 = up_conv(input=512, output=256)
         self.att4 = attention_block(F_g=256, F_l=256, F_int=128)
@@ -111,21 +111,22 @@ class AttUNet(nn.Module):
         x4 = self.Maxpool(x3)
         x4 = self.conv4(x4)
 
-        x5 = self.Maxpool(x4)
-        x5 = self.conv5(x5)
+        # x5 = self.Maxpool(x4)
+        # x5 = self.conv5(x5)
 
         # bottle neck
-        x5 = self.bot1(x5)
-        # x5 = self.bot2(x5)
-        x5 = self.bot3(x5)
+        x4 = self.bot1(x4)
+        x4 = self.bot2(x4)
+        x4 = self.bot3(x4)
 
         # decoding + concat path
-        d5 = self.up5(x5)
-        x4 = self.att5(g=d5, x=x4)
-        d5 = torch.cat((x4, d5), dim=1)        
-        d5 = self.up_conv5(d5)
+        # d5 = self.up5(x5)
+        # x4 = self.att5(g=d5, x=x4)
+        # d5 = torch.cat((x4, d5), dim=1)        
+        # d5 = self.up_conv5(d5)
         
-        d4 = self.up4(d5)
+        # d4 = self.up4(d5)
+        d4 = self.up4(x4)
         x3 = self.att4(g=d4, x=x3)
         d4 = torch.cat((x3, d4), dim=1)
         d4 = self.up_conv4(d4)
@@ -141,5 +142,7 @@ class AttUNet(nn.Module):
         d2 = self.up_conv2(d2)
 
         d1 = self.conv_1x1(d2)
+
+        d1 = nn.functional.softmax(d1, dim=1)
 
         return d1

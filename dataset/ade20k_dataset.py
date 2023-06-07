@@ -10,7 +10,7 @@ default_transform = transforms.Compose([
     ])
 
 class ade20k_dataset(Dataset):
-    def __init__(self, config_path, mode='train', root='./data/ADEChallengeData2016', crop_size=(640, 640)):
+    def __init__(self, config_path, mode='train', root='./data/ADEChallengeData2016', crop_size=(128, 128)):
         cfg = Config.fromfile(config_path)
         self.root = root
         self.mode = mode
@@ -40,7 +40,7 @@ class ade20k_dataset(Dataset):
             ])
         else:
             transform = transforms.Compose([
-                transforms.Resize((640, 640), antialias=True)
+                transforms.Resize(self.crop_size, antialias=True)
             ])
         return transform(img)
     
@@ -48,7 +48,7 @@ class ade20k_dataset(Dataset):
         label_path = self.data[index]['seg_map_path']
         label = torchvision.io.read_image(label_path)
         transform = transforms.Compose([
-            transforms.Resize((640, 640), antialias=True)
+            transforms.Resize(self.crop_size, antialias=True)
         ])
         return transform(label)
 
