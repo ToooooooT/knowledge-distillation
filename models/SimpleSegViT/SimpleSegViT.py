@@ -43,7 +43,7 @@ class SimpleSegViT(nn.Module):
                  CE_loss=False,
                  crop_train=False,
                  shrink_ratio=None,
-                 num_classes=60,
+                 num_classes=150,
                  training=True) -> None:
         super().__init__()
 
