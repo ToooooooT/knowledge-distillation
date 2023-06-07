@@ -19,6 +19,7 @@ from mmseg.models import build_segmentor
 from mmseg.datasets import ADE20KDataset
 
 from decode_heads import atm_head
+from dataset import ade20k_dataset
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -136,12 +137,14 @@ def main():
     # train_dataset = ADE20KDataset(data_root='./data/ADEChallengeData2016',
     #                               data_prefix=dict(img_path='images/training', seg_map_path='annotations/training'),
     #                               img_suffix='.jpg',
-    #                               seg_map_suffix='.png', pipeline=cfg.get('test_pipeline'))
-    valid_dataset = ADE20KDataset(data_root='./data/ADEChallengeData2016',
-                                  data_prefix=dict(img_path='images/validation', seg_map_path='annotations/validation'),
-                                  img_suffix='.jpg',
-                                  seg_map_suffix='.png', 
-                                  pipeline=cfg.get('test_pipeline'))
+    #                               seg_map_suffix='.png', pipeline=cfg.get('train_pipeline'))
+    valid_data = ade20k_dataset(mode='valid')
+    valid_loader = DataLoader(valid_data,
+                            num_workers=4,
+                            batch_size=1,
+                            shuffle=True,
+                            drop_last=True,
+                            pin_memory=True)
     
     
     # valid_loader = DataLoader(dataset=valid_dataset, 
