@@ -19,7 +19,7 @@ from mmseg.models import build_segmentor
 from mmseg.datasets import ADE20KDataset
 
 from decode_heads import atm_head
-from dataset import ade20k_dataset
+from dataset.ade20k_dataset import ade20k_dataset
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -44,6 +44,7 @@ def parse_args():
     # out_indices (list | int) Output from which stages.
     parser.add_argument('--drop_path_rate', default=0., type=float, help='stochastic depth rate')
     # ---------------------- decoder ----------------------
+    parser.add_argument('--single', default=False, action='store_true')
     parser.add_argument('--decoder_in_channels', default=1024, type=int, help='the input channels of decoder')
     parser.add_argument('--decoder_embed_dims', default=512, type=int, help='the embedding dimensions of decoder')
     parser.add_argument('--decoder_num_heads', default=8, type=int, help='number of head of decoder')
@@ -120,7 +121,8 @@ def main():
                                      decoder_embed_dims=args.decoder_embed_dims,
                                      decoder_num_heads=args.decoder_num_heads,
                                      out_indices=out_indices,
-                                     use_stages=use_stages
+                                     use_stages=use_stages,
+                                     single=args.single
                                      )
     teacher = build_segmentor(cfg=cfg.model, test_cfg=cfg.get('test_cfg'))
     checkpoint = torch.load(args.checkpoint)
@@ -130,7 +132,6 @@ def main():
     # --------- transfer to device ------------------------------------
     simple_segvit = simple_segvit.to(device)
     teacher = teacher.to(device)
-    # teacher.to(device)
 
     # --------- load a dataset ------------------------------------
     # TODO: build dataset
@@ -138,22 +139,14 @@ def main():
     #                               data_prefix=dict(img_path='images/training', seg_map_path='annotations/training'),
     #                               img_suffix='.jpg',
     #                               seg_map_suffix='.png', pipeline=cfg.get('train_pipeline'))
-    valid_data = ade20k_dataset(mode='valid')
+    valid_data = ade20k_dataset(config_path=args.config, mode='valid')
     valid_loader = DataLoader(valid_data,
-                            num_workers=4,
-                            batch_size=1,
-                            shuffle=True,
-                            drop_last=True,
+                            num_workers=32,
+                            batch_size=args.batch_size,
+                            shuffle=False,
+                            drop_last=False,
                             pin_memory=True)
     
-    
-    # valid_loader = DataLoader(dataset=valid_dataset, 
-    #                           batch_size=args.batch_size, 
-    #                           shuffle=False, 
-    #                           num_workers=32, 
-    #                           pin_memory=True,
-    #                           drop_last=False)
-
 
     # --------- optimizers ------------------------------------
     if args.optimizer == 'adam':

@@ -1,4 +1,5 @@
 from torch.utils.data import Dataset
+import torch
 from torchvision import transforms
 import torchvision
 from mmseg.datasets import ADE20KDataset
@@ -9,16 +10,17 @@ default_transform = transforms.Compose([
     ])
 
 class ade20k_dataset(Dataset):
-    def __init__(self, args, mode='train', transform=default_transform):
-        cfg = Config.fromfile(args.config)
-        self.root = './data/ADEChallengeData2016'
+    def __init__(self, config_path, mode='train', root='./data/ADEChallengeData2016', crop_size=(640, 640)):
+        cfg = Config.fromfile(config_path)
+        self.root = root
         self.mode = mode
+        self.crop_size = crop_size
         if mode == 'train':
             self.data = ADE20KDataset(data_root=self.root,
                                   data_prefix=dict(img_path='images/training', seg_map_path='annotations/training'),
                                   img_suffix='.jpg',
                                   seg_map_suffix='.png', 
-                                  pipeline=cfg.get('train_pipeline'))
+                                  pipeline=cfg.get('test_pipeline'))
         elif mode == 'valid':
             self.data = ADE20KDataset(data_root=self.root,
                                   data_prefix=dict(img_path='images/validation', seg_map_path='annotations/validation'),
@@ -31,14 +33,21 @@ class ade20k_dataset(Dataset):
         
     def get_img(self, index):
         img = self.data[index]['img']
-        transform = transforms.Compose([
-            transforms.Resize(640, 640),
-        ])
-        return transform(img)
+        if self.mode == 'train':
+            transform = transforms.Compose([
+                transforms.RandomCrop(self.crop_size),
+                transforms.RandomHorizontalFlip(p=0.5),
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.Resize((640, 640), antialias=True)
+            ])
+        img = transform(img)
+        print(img.shape)
+        print(type(img))
+        return img
     
     def get_label(self, index):
-        # TODO: fix this function to load annotation image
-        # label = self.data[index]['gt_semantic_seg']
         label_path = self.data[index]['seg_map_path']
         label = torchvision.io.read_image(label_path)
         return label
