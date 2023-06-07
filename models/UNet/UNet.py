@@ -46,7 +46,7 @@ class UNet(nn.Module):
 
         # bottle neck
         self.bot1 = conv_block(input=1024, output=2048)
-        self.bot2 = conv_block(input=2048, output=2048)
+        # self.bot2 = conv_block(input=2048, output=2048)
         self.bot3 = conv_block(input=2048, output=1024)
 
         # up
@@ -83,7 +83,7 @@ class UNet(nn.Module):
 
         # bottle neck
         x5 = self.bot1(x5)
-        x5 = self.bot2(x5)
+        # x5 = self.bot2(x5)
         x5 = self.bot3(x5)
 
         # decoding + concat path
