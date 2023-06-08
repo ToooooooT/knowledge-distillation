@@ -27,16 +27,17 @@ from decode_heads import atm_head
 from dataset.ade20k_dataset import ade20k_dataset
 
 from losses.atm_loss import ATMLoss
+from utils.util import intersectionAndUnionGPU 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', default='./configs/segvit/segvit_vit-l_jax_640x640_160k_ade20k.py')
     parser.add_argument('--checkpoint', default='./pretrained/vit_large_ade.pth')
     parser.add_argument('--lr', default=5e-4, type=float, help='learning rate')
-    parser.add_argument('--batch_size', default=1, type=int, help='batch size')
+    parser.add_argument('--batch_size', default=2, type=int, help='batch size')
     parser.add_argument('--cuda', default=False, action='store_true')  
-    parser.add_argument('--epochs', default=100, type=int, help='number of epochs to trainkj')  
-    parser.add_argument('--eval_freq', default=4, type=int, help='test frequency')  
+    parser.add_argument('--epochs', default=50, type=int, help='number of epochs to trainkj')  
+    parser.add_argument('--eval_freq', default=1, type=int, help='test frequency')  
     parser.add_argument('--model_dir', default='', type=str, help='model directory')  
     parser.add_argument('--model_type', default='AttUnet', type=str, help='student model type')  
     parser.add_argument('--log_dir', default='./logs/', type=str, help='base directory to save logs')  
@@ -44,7 +45,7 @@ def parse_args():
     parser.add_argument('--seed', default=1, type=int, help='manual seed')
     # ---------------------- encoder ----------------------
     parser.add_argument('--shrink_idx', default=-1, type=int, help='the layer to shrink')
-    parser.add_argument('--img_size', default=512, type=int, help='the image size')
+    parser.add_argument('--img_size', default=640, type=int, help='the image size')
     parser.add_argument('--encoder_in_channels', default=3, type=int, help='the input channels of encoder')
     parser.add_argument('--encoder_embed_dims', default=1024, type=int, help='the embedding dimension of encoder')
     parser.add_argument('--encoder_num_layers', default=6, type=int, help='number of layers of encoder')
@@ -59,34 +60,16 @@ def parse_args():
     # use_stages = len(out_indices).
     parser.add_argument('--teach_w', default=0.5, type=float, help='the loss weight of teacher label')
     parser.add_argument('--ground_w', default=0.5, type=float, help='the loss weight of ground truth')
+    parser.add_argument('--num_class', default=151, type=int, help='number of classes')
 
     args = parser.parse_args()
     return args
 
 
-def intersectionAndUnionGPU(output, target, K, ignore_index=255):
-    # 'K' classes, output and target sizes are N or N * L or N * H * W, each value in range 0 to K - 1.
-    assert (output.dim() in [1, 2, 3])
-    assert output.shape == target.shape
-    output = output.view(-1)
-    target = target.view(-1).to(torch.int64)
-    output[target == ignore_index] = ignore_index
-    intersection = output[output == target]
-    area_intersection = torch.histc(intersection, bins=K, min=0, max=K-1)
-    area_output = torch.histc(output, bins=K, min=0, max=K-1)
-    area_target = torch.histc(target, bins=K, min=0, max=K-1)
-    area_union = area_output + area_target - area_intersection
-    return area_intersection, area_union, area_target
-
-
 def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, args):
     with torch.no_grad():
         teacher_pred = teacher(img)
-        teacher_pred['pred'] = (teacher_pred['pred'].argmax(dim=1, keepdim=True) + 1)
-
-    i, u, _ = intersectionAndUnionGPU(teacher_pred['pred'].squeeze(0), label.squeeze(0), 151, ignore_index=0)
-    mIOU = i.sum() / u.sum() # mean IOU, taking (i/u).mean() is wrong
-    print(mIOU)
+        teacher_pred = (teacher_pred.argmax(dim=1, keepdim=True) + 1) % 151
 
     # TODO: segvit loss function from paper
     if isinstance(student, tuple):
@@ -94,22 +77,21 @@ def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, args):
         student1_pred = student1(img)
         student2_pred = student2(img)
         loss1 = nn.CrossEntropyLoss(student1_pred.view(-1, 150), label.view(-1)) * args.ground_w + \
-                nn.CrossEntropyLoss(student1_pred.view(-1, 150), teacher_pred['pred'].view(-1)) * args.teach_w
+                nn.CrossEntropyLoss(student1_pred.view(-1, 150), teacher_pred.view(-1)) * args.teach_w
         loss2 = nn.CrossEntropyLoss(student2_pred['pred'].view(-1, 150), label.view(-1)) * args.ground_w + \
-                nn.CrossEntropyLoss(student2_pred['pred'].view(-1, 150), teacher_pred['pred'].view(-1)) * args.teach_w
+                nn.CrossEntropyLoss(student2_pred['pred'].view(-1, 150), teacher_pred.view(-1)) * args.teach_w
     else:
         if args.model_type != 'simple_segvit':
             student_pred = student(img)
-            loss = F.cross_entropy(student_pred.permute(0, 2, 3, 1).contiguous().view(-1, 150), label.view(-1)) * args.ground_w + \
-                    F.cross_entropy(student_pred.permute(0, 2, 3, 1).contiguous().view(-1, 150), teacher_pred['pred'].view(-1)) * args.teach_w
+            loss = F.cross_entropy(student_pred.permute(0, 2, 3, 1).contiguous().view(-1, 151), label.view(-1)) * args.ground_w + \
+                    F.cross_entropy(student_pred.permute(0, 2, 3, 1).contiguous().view(-1, 151), teacher_pred.view(-1)) * args.teach_w
         else:
             pass
 
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
-    loss.detach().cpu()
-    return loss.item()
+    return loss.detach().cpu().item()
 
 
 def pred(student, img, label, args):
@@ -123,10 +105,13 @@ def pred(student, img, label, args):
                 student_pred = student(img)
             else:
                 pass
-
-    i, u, _ = intersectionAndUnionGPU(student_pred, label, 150, ignore_index=0)
-    mIOU = i.sum()/u.sum() # mean IOU, taking (i/u).mean() is wrong
-    return mIOU
+    
+    avg_mIOU = 0
+    for i in range(label.shape[0]):
+        i, u, _ = intersectionAndUnionGPU(student_pred[i].argmax(dim=0, keepdim=True), label[i], 151, ignore_index=0)
+        mIOU = i.sum() / u.sum() # mean IOU, taking (i/u).mean() is wrong
+        avg_mIOU += mIOU
+    return avg_mIOU / label.shape[0]
 
 
 def main():
@@ -239,13 +224,14 @@ def main():
         raise ValueError(f'Unknown optimizer: {args.optimizer}')
 
     if args.model_type == 'fuse':
-        optimizer = args.optimizer([student1.parameters()] + [student1.parameters()], lr=args.lr)
+        optimizer = args.optimizer([student1.parameters()] + [student2.parameters()], lr=args.lr)
     else:
         optimizer = args.optimizer(student.parameters(), lr=args.lr)
 
     # --------- training loop ------------------------------------
+    teacher = teacher.eval()
     if args.model_type == 'fuse':
-        optimizer = args.optimizer([student1.parameters()] + [student1.parameters()], lr=args.lr)
+        optimizer = args.optimizer([student1.parameters()] + [student2.parameters()], lr=args.lr)
         best_test_mIoU1 = best_test_mIoU2 = 0
     else:
         optimizer = args.optimizer(student.parameters(), lr=args.lr)
@@ -260,7 +246,7 @@ def main():
             student.train()
             epoch_loss = 0
 
-        for img, label in train_loader:
+        for img, label in tqdm(train_loader):
             img = img.to(device)
             label = label.to(device)
             if args.model_type == 'fuse':
@@ -290,11 +276,11 @@ def main():
                 img = img.to(device)
                 label = label.to(device)
                 if args.model_type == 'fuse':
-                    mIoU1, mIoU2 = pred(teacher, (student1, student2), img, label)
+                    mIoU1, mIoU2 = pred((student1, student2), img, label, args)
                     test_mIoU1 += mIoU1
                     test_mIoU2 += mIoU2
                 else:
-                    mIoU = pred(teacher, student, img, label)
+                    mIoU = pred(student, img, label, args)
                     test_mIoU += mIoU
 
             with open(f'./{args.log_dir}/train_record.txt', 'a') as f:
