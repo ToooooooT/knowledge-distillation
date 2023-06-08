@@ -10,7 +10,7 @@ default_transform = transforms.Compose([
     ])
 
 class ade20k_dataset(Dataset):
-    def __init__(self, config_path, mode='train', root='./data/ADEChallengeData2016', crop_size=(128, 128)):
+    def __init__(self, config_path, mode='train', root='./data/ADEChallengeData2016', crop_size=(640, 640)):
         cfg = Config.fromfile(config_path)
         self.root = root
         self.mode = mode
