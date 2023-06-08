@@ -106,4 +106,6 @@ class UNet(nn.Module):
 
         d1 = self.conv_1x1(d2)
 
+        d1 = nn.functional.softmax(d1, dim=1)
+        
         return d1
