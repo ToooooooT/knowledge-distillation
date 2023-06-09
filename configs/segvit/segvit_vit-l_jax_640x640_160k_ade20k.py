@@ -63,7 +63,7 @@ test_pipeline = [
         dict(type='LoadImageFromFile'),
         # TODO
         # dict(type='LoadAnnotations'),
-        dict(type='Resize', scale=(2048, 640), keep_ratio=True),
+        dict(type='Resize', scale=(2048, 640), keep_ratio=False),
         dict(type='Normalize', **img_norm_cfg),
         dict(type='ImageToTensor', keys=['img'])
 ]
