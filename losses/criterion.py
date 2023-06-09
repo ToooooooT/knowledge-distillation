@@ -96,13 +96,13 @@ class SetCriterion(nn.Module):
         targets dicts must contain the key "labels" containing a tensor of dim [nb_target_boxes]
         """
         assert "pred_logits" in outputs
-        src_logits = outputs["pred_logits"]
-
+        src_logits = outputs["pred_logits"] # shape = [1, 150, 151]
+        
         idx = self._get_src_permutation_idx(indices)
-        target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
+        target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)]).type(torch.int64) # shape = [18]
         target_classes = torch.full(
             src_logits.shape[:2], self.num_classes, dtype=torch.int64, device=src_logits.device
-        )
+        ) # shape = [1, 150]
         target_classes[idx] = target_classes_o
 
         loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
@@ -145,7 +145,7 @@ class SetCriterion(nn.Module):
         # permute predictions following indices
         batch_idx = torch.cat([torch.full_like(src, i) for i, (src, _) in enumerate(indices)])
         src_idx = torch.cat([src for (src, _) in indices])
-        return batch_idx, src_idx
+        return batch_idx.type(torch.int64), src_idx.type(torch.int64)
 
     def _get_tgt_permutation_idx(self, indices):
         # permute targets following indices
