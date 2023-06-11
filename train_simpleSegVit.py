@@ -102,7 +102,22 @@ def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, args, e
             loss = F.cross_entropy(student_pred, label) * args.ground_w + \
                     F.cross_entropy(student_pred, teacher_pred) * args.teach_w
         else:
-            pass
+            # get the output of simple_segvit, which will output a dict of tensors,
+            # and bulid ATM module to obtain losses
+            student_pred = student(img)
+            # TODO: setting of ATMLoss
+            atm_loss = ATMLoss(num_classes=151,
+                                    dec_layers=1,
+                                    mask_weight=20.0,
+                                    dice_weight=1.0,
+                                    cls_weight=1.0,
+                                    loss_weight=1.0)
+            ground_losses = atm_loss.forward(student_pred, label, ignore_index=0)
+            ground_losses = ground_losses['loss_ce'] + ground_losses['loss_mask'] + ground_losses['loss_dice']
+            teacher_losses = F.cross_entropy(student_pred['pred_logits'].permute(0, 2, 3, 1).contiguous().view(-1, 151), teacher_pred['pred_logits'].permute(0, 2, 3, 1).contiguous().view(-1, 151)) + \
+                                F.mse_loss(student_pred['pred_masks'], teacher_pred['pred_masks'])
+            # combine two kinds of losses; dtpye=torch.tensor
+            loss = ground_losses * args.ground_w + teacher_losses * args.teacher_w 
 
     optimizer.zero_grad()
     loss.backward()
@@ -117,10 +132,8 @@ def pred(student, img, label, args):
             student1_pred = student1(img)
             student2_pred = student2(img)
         else:
-            if args.model_type != 'simple_segvit':
-                student_pred = student(img)
-            else:
-                pass
+            # get the output of simple_segvit, which will output a dict of tensors
+            student_pred = student(img)
     
     avg_mIOU = 0
     for i in range(label.shape[0]):
@@ -189,6 +202,21 @@ def main():
         student = AttUNet().to(device)
     elif args.model_type == 'Unet':
         student = UNet().to(device)
+    elif args.model_type == 'simple_segvit':
+        student = SimpleSegViT(shrink_idx=args.shrink_idx,
+                                img_size=args.img_size,
+                                encoder_in_channels=args.encoder_in_channels,
+                                encoder_embed_dims=args.encoder_embed_dims,
+                                encoder_num_layers=args.encoder_num_layers,
+                                encoder_num_heads=args.encoder_num_heads,
+                                drop_path_rate=args.drop_path_rate,
+                                decoder_in_channels=args.decoder_in_channels,
+                                decoder_embed_dims=args.decoder_embed_dims,
+                                decoder_num_heads=args.decoder_num_heads,
+                                out_indices=out_indices,
+                                use_stages=use_stages,
+                                single=args.single
+                                ).to(device)
     elif args.model_type == 'fuse':
         student1 = AttUNet().to(device)
         student2 = SimpleSegViT(shrink_idx=args.shrink_idx,
@@ -247,7 +275,7 @@ def main():
         optimizer = args.optimizer(student.parameters(), lr=args.lr)
 
     # --------- training loop ------------------------------------
-    teacher = teacher.eval()
+    # teacher = teacher.eval()
     if args.model_type == 'fuse':
         optimizer = args.optimizer([student1.parameters()] + [student2.parameters()], lr=args.lr)
         best_test_mIoU1 = best_test_mIoU2 = 0
