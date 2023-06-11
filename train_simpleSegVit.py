@@ -48,7 +48,7 @@ def parse_args():
     parser.add_argument('--img_size', default=640, type=int, help='the image size')
     parser.add_argument('--encoder_in_channels', default=3, type=int, help='the input channels of encoder')
     parser.add_argument('--encoder_embed_dims', default=1024, type=int, help='the embedding dimension of encoder')
-    parser.add_argument('--encoder_num_layers', default=6, type=int, help='number of layers of encoder')
+    parser.add_argument('--encoder_num_layers', default=4, type=int, help='number of layers of encoder')
     parser.add_argument('--encoder_num_heads', default=8, type=int, help='number of head of encoder')
     # out_indices (list | int) Output from which stages.
     parser.add_argument('--drop_path_rate', default=0., type=float, help='stochastic depth rate')
@@ -156,7 +156,7 @@ def main():
 
     assert args.teach_w + args.ground_w == 1.
     
-    out_indices = [2, 5]
+    out_indices = [1, 3]
     use_stages = 2
 
     assert use_stages == len(out_indices)
