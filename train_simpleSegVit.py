@@ -68,20 +68,21 @@ def parse_args():
 
 def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, use_stages, args):
     # inference teacher prediction
-    # transform = transforms.Compose([
-    #     transforms.Resize((args.img_size, args.img_size), antialias=True)
-    # ])
+    transform = transforms.Compose([
+        transforms.Resize((args.img_size, args.img_size), antialias=True)
+    ])
 
-    # with torch.no_grad():
-    #     teacher_pred = teacher(img)
-    #     teacher_pred = transform(teacher_pred)
-    #     teacher_pred = F.softmax(teacher_pred, dim=1)
+    with torch.no_grad():
+        teacher_pred = teacher(img)
+        teacher_pred = transform(teacher_pred)
+        teacher_pred = F.softmax(teacher_pred, dim=1)
 
-    #     B, C, H, W = img.shape
-    #     teacher_pred = torch.cat([torch.zeros((B, 1, H, W)).to('cuda').to(torch.float), teacher_pred], dim=1)
-    #     # Create a mask where the label is 0, shape will be [1, H, W]
-    #     mask = (label == 0)
-    #     teacher_pred[:, 0, :, :] = (teacher_pred[:, 0, :, :].to(torch.int) | mask.squeeze().to(torch.int)).to(torch.float)
+        B, C, H, W = img.shape
+        teacher_pred = torch.cat([torch.zeros((B, 1, H, W)).to('cuda').to(torch.float), teacher_pred], dim=1)
+        # Create a mask where the label is 0, shape will be [1, H, W]
+        mask = (label == 0)
+        teacher_pred[:, 0, :, :] = (teacher_pred[:, 0, :, :].to(torch.int) | mask.squeeze().to(torch.int)).to(torch.float)
+        teacher_pred[:, 1:, :, :] = (~mask.squeeze()).to(torch.int) * teacher_pred[:, 1:, :, :]
 
     # TODO: segvit loss function from paper
     if isinstance(student, tuple):
