@@ -34,7 +34,7 @@ def parse_args():
     parser.add_argument('--config', default='./configs/segvit/segvit_vit-l_jax_640x640_160k_ade20k.py')
     parser.add_argument('--checkpoint', default='./pretrained/vit_large_ade.pth')
     parser.add_argument('--lr', default=5e-4, type=float, help='learning rate')
-    parser.add_argument('--batch_size', default=2, type=int, help='batch size')
+    parser.add_argument('--batch_size', default=4, type=int, help='batch size')
     parser.add_argument('--cuda', default=False, action='store_true')  
     parser.add_argument('--epochs', default=50, type=int, help='number of epochs to trainkj')  
     parser.add_argument('--eval_freq', default=1, type=int, help='test frequency')  
@@ -67,9 +67,21 @@ def parse_args():
 
 
 def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, use_stages, args):
-    with torch.no_grad():
-        teacher_pred = teacher(img)
-        teacher_pred = (teacher_pred.argmax(dim=1, keepdim=True) + 1) % 151
+    # inference teacher prediction
+    # transform = transforms.Compose([
+    #     transforms.Resize((args.img_size, args.img_size), antialias=True)
+    # ])
+
+    # with torch.no_grad():
+    #     teacher_pred = teacher(img)
+    #     teacher_pred = transform(teacher_pred)
+    #     teacher_pred = F.softmax(teacher_pred, dim=1)
+
+    #     B, C, H, W = img.shape
+    #     teacher_pred = torch.cat([torch.zeros((B, 1, H, W)).to('cuda').to(torch.float), teacher_pred], dim=1)
+    #     # Create a mask where the label is 0, shape will be [1, H, W]
+    #     mask = (label == 0)
+    #     teacher_pred[:, 0, :, :] = (teacher_pred[:, 0, :, :].to(torch.int) | mask.squeeze().to(torch.int)).to(torch.float)
 
     # TODO: segvit loss function from paper
     if isinstance(student, tuple):
@@ -83,8 +95,11 @@ def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, use_sta
     else:
         if args.model_type != 'simple_segvit':
             student_pred = student(img)
-            loss = F.cross_entropy(student_pred.permute(0, 2, 3, 1).contiguous().view(-1, 151), label.view(-1)) * args.ground_w + \
-                    F.cross_entropy(student_pred.permute(0, 2, 3, 1).contiguous().view(-1, 151), teacher_pred.view(-1)) * args.teach_w
+            student_pred = student_pred.permute(0, 2, 3, 1).contiguous().view(-1, 151)
+            label = label.permute(0, 2, 3, 1).contiguous().view(-1)
+            teacher_pred = teacher_pred.permute(0, 2, 3, 1).contiguous().view(-1, 151)
+            loss = F.cross_entropy(student_pred, label) * args.ground_w + \
+                    F.cross_entropy(student_pred, teacher_pred) * args.teach_w
         else:
             # get the output of simple_segvit, which will output a dict of tensors,
             # and bulid ATM module to obtain losses
@@ -133,9 +148,11 @@ def main():
     if args.cuda:
         assert torch.cuda.is_available(), 'CUDA is not available.'
         device = 'cuda'
+        enable_amp = True
     else:
+        enable_amp = False
         assert False, 'Using CPU.'
-    
+
     assert args.teach_w + args.ground_w == 1.
     
     out_indices = [2, 5]
@@ -228,16 +245,16 @@ def main():
     teacher = teacher.to(device)
 
     # --------- load a dataset ------------------------------------
-    train_data = ade20k_dataset(args.config, mode='train', crop_size=(args.img_size, args.img_size))
+    train_data = ade20k_dataset(args.config, mode='train', crop_size=(args.img_size, args.img_size), isTeach=False)
     train_loader = DataLoader(train_data,
-                            num_workers=1,
+                            num_workers=32,
                             batch_size=args.batch_size,
                             shuffle=True,
                             drop_last=True,
                             pin_memory=False)
-    valid_data = ade20k_dataset(args.config, mode='valid', crop_size=(args.img_size, args.img_size))
+    valid_data = ade20k_dataset(args.config, mode='valid', crop_size=(args.img_size, args.img_size), isTeach=False)
     valid_loader = DataLoader(valid_data,
-                            num_workers=1,
+                            num_workers=32,
                             batch_size=1,
                             shuffle=False,
                             drop_last=False,
