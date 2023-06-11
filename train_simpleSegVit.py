@@ -269,6 +269,9 @@ def main():
     # --------- transfer to device ------------------------------------
     teacher = teacher.to(device)
 
+    total_params = sum(p.numel() for p in student.parameters())
+    print(total_params)
+
     # --------- load a dataset ------------------------------------
     train_data = ade20k_dataset(args.config, mode='train', crop_size=(args.img_size, args.img_size), isTeach=False)
     train_loader = DataLoader(train_data,
