@@ -134,11 +134,11 @@ def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, use_sta
 
             # compute teacher loss
             teacher_losses = F.cross_entropy(student_pred['pred_logits'].view(-1, 151), 
-                                        teacher_pred['pred_logits'].view(-1, 151)) + \
-                                    F.mse_loss(student_pred['pred_masks'], teacher_pred['pred_masks'])
+                                        teacher_pred['pred_logits'].softmax(dim=2).view(-1, 151))
+            teacher_losses += F.mse_loss(student_pred['pred_masks'], teacher_pred['pred_masks'])
             for i in range(len(teacher_pred['aux_outputs'][3 - use_stages:])):
                 teacher_losses += (F.cross_entropy(student_pred['aux_outputs'][i]['pred_logits'].view(-1, 151), 
-                                        teacher_pred['aux_outputs'][3 - use_stages + i]['pred_logits'].view(-1, 151)) + \
+                                        teacher_pred['aux_outputs'][3 - use_stages + i]['pred_logits'].softmax(dim=2).view(-1, 151)) + \
                                     F.mse_loss(student_pred['aux_outputs'][i]['pred_masks'], teacher_pred['aux_outputs'][3 - use_stages + i]['pred_masks']))
             # combine two kinds of losses; dtpye=torch.tensor
             loss = ground_losses * args.ground_w + teacher_losses * args.teach_w 
@@ -146,6 +146,7 @@ def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, use_sta
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
+    # print(f'ground losses: {ground_losses.detach().cpu().item()}, teacher losses: {teacher_losses.detach().cpu().item()}')
     return loss.detach().cpu().item()
 
 
