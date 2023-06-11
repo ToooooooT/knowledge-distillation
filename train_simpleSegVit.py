@@ -74,15 +74,18 @@ def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, use_sta
 
     with torch.no_grad():
         teacher_pred = teacher(img)
-        teacher_pred = transform(teacher_pred)
-        teacher_pred = F.softmax(teacher_pred, dim=1)
+        if not isinstance(teacher_pred, dict):
+            teacher_pred = transform(teacher_pred)
+            teacher_pred = F.softmax(teacher_pred, dim=1)
 
-        B, C, H, W = img.shape
-        teacher_pred = torch.cat([torch.zeros((B, 1, H, W)).to('cuda').to(torch.float), teacher_pred], dim=1)
-        # Create a mask where the label is 0, shape will be [1, H, W]
-        mask = (label == 0)
-        teacher_pred[:, 0, :, :] = (teacher_pred[:, 0, :, :].to(torch.int) | mask.squeeze().to(torch.int)).to(torch.float)
-        teacher_pred[:, 1:, :, :] = (~mask.squeeze()).to(torch.int) * teacher_pred[:, 1:, :, :]
+            B, C, H, W = img.shape
+            teacher_pred = torch.cat([torch.zeros((B, 1, H, W)).to('cuda').to(torch.float), teacher_pred], dim=1)
+            # Create a mask where the label is 0, shape will be [1, H, W]
+            mask = (label == 0)
+            teacher_pred[:, 0, :, :] = (teacher_pred[:, 0, :, :].to(torch.int) | mask.squeeze().to(torch.int)).to(torch.float)
+            teacher_pred[:, 1:, :, :] = (~mask.squeeze()).to(torch.int) * teacher_pred[:, 1:, :, :]
+        else:
+            teacher_pred['pred_masks'] = transform(teacher_pred['pred_masks'])
 
     # TODO: segvit loss function from paper
     if isinstance(student, tuple):
@@ -106,21 +109,39 @@ def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, use_sta
             # and bulid ATM module to obtain losses
             student_pred = student(img)
             # TODO: setting of ATMLoss
-            atm_loss = ATMLoss(num_classes=151,
+            atm_loss = ATMLoss(num_classes=150,
                                     dec_layers=use_stages,
                                     mask_weight=20.0,
                                     dice_weight=1.0,
                                     cls_weight=1.0,
                                     loss_weight=1.0)
-            ground_losses = atm_loss(student_pred, label, ignore_index=0)
-            ground_losses = ground_losses['loss_ce'] + ground_losses['loss_mask'] + ground_losses['loss_dice']
-            teacher_losses = 0
+            # compute ground truth loss
+            ground_losses = 0
+            for i in range(args.batch_size):
+                tmp = {}
+                tmp['pred'] = student_pred['pred'][i].unsqueeze(0)
+                tmp['pred_logits'] = student_pred['pred_logits'][i].unsqueeze(0)
+                tmp['pred_masks'] = student_pred['pred_masks'][i].unsqueeze(0)
+                tmp['aux_outputs'] = []
+                for j in range(len(student_pred['aux_outputs'])):
+                    dict1 = {}
+                    dict1['pred_logits'] = student_pred['aux_outputs'][j]['pred_logits'][i].unsqueeze(0)
+                    dict1['pred_masks'] = student_pred['aux_outputs'][j]['pred_masks'][i].unsqueeze(0)
+                    tmp['aux_outputs'].append(dict1)
+                losses = atm_loss(tmp, label[i], ignore_index=0)
+                ground_losses += (losses['loss_ce'] + losses['loss_mask'] + losses['loss_dice'])
+            ground_losses /= args.batch_size
+
+            # compute teacher loss
+            teacher_losses = F.cross_entropy(student_pred['pred_logits'].view(-1, 151), 
+                                        teacher_pred['pred_logits'].view(-1, 151)) + \
+                                    F.mse_loss(student_pred['pred_masks'], teacher_pred['pred_masks'])
             for i in range(len(teacher_pred['aux_outputs'][3 - use_stages:])):
-                teacher_losses += (F.cross_entropy(student_pred['aux_outputs'][i]['pred_logits'].permute(0, 2, 3, 1).contiguous().view(-1, 151), 
-                                        teacher_pred['aux_outputs'][3 - use_stages + i]['pred_logits'].permute(0, 2, 3, 1).contiguous().view(-1, 151)) + \
+                teacher_losses += (F.cross_entropy(student_pred['aux_outputs'][i]['pred_logits'].view(-1, 151), 
+                                        teacher_pred['aux_outputs'][3 - use_stages + i]['pred_logits'].view(-1, 151)) + \
                                     F.mse_loss(student_pred['aux_outputs'][i]['pred_masks'], teacher_pred['aux_outputs'][3 - use_stages + i]['pred_masks']))
             # combine two kinds of losses; dtpye=torch.tensor
-            loss = ground_losses * args.ground_w + teacher_losses * args.teacher_w 
+            loss = ground_losses * args.ground_w + teacher_losses * args.teach_w 
 
     optimizer.zero_grad()
     loss.backward()
@@ -280,7 +301,8 @@ def main():
         optimizer = args.optimizer(student.parameters(), lr=args.lr)
 
     # --------- training loop ------------------------------------
-    # teacher = teacher.eval()
+    if args.model_type != 'simple_segvit':
+        teacher = teacher.eval()
     if args.model_type == 'fuse':
         optimizer = args.optimizer([student1.parameters()] + [student2.parameters()], lr=args.lr)
         best_test_mIoU1 = best_test_mIoU2 = 0
