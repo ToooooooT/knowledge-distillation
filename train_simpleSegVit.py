@@ -98,8 +98,8 @@ def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, args):
                                     loss_weight=1.0)
             ground_losses = atm_loss.forward(student_pred, label, ignore_index=0)
             ground_losses = ground_losses['loss_ce'] + ground_losses['loss_mask'] + ground_losses['loss_dice']
-            teacher_losses = atm_loss.forward(student_pred, teacher_pred, ignore_index=0)
-            teacher_losses = teacher_losses['loss_ce'] + teacher_losses['loss_mask'] + teacher_losses['loss_dice']
+            teacher_losses = F.cross_entropy(student_pred['pred_logits'].permute(0, 2, 3, 1).contiguous().view(-1, 151), teacher_pred['pred_logits'].permute(0, 2, 3, 1).contiguous().view(-1, 151)) + \
+                                F.mse_loss(student_pred['pred_masks'], teacher_pred['pred_masks'])
             # combine two kinds of losses; dtpye=torch.tensor
             loss = ground_losses * args.ground_w + teacher_losses * args.teacher_w 
 
@@ -257,7 +257,7 @@ def main():
         optimizer = args.optimizer(student.parameters(), lr=args.lr)
 
     # --------- training loop ------------------------------------
-    teacher = teacher.eval()
+    # teacher = teacher.eval()
     if args.model_type == 'fuse':
         optimizer = args.optimizer([student1.parameters()] + [student2.parameters()], lr=args.lr)
         best_test_mIoU1 = best_test_mIoU2 = 0
