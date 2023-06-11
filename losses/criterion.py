@@ -87,7 +87,7 @@ class SetCriterion(nn.Module):
         self.weight_dict = weight_dict
         self.eos_coef = eos_coef
         self.losses = losses
-        empty_weight = torch.ones(self.num_classes + 1)
+        empty_weight = torch.ones(self.num_classes + 1, device='cuda')
         empty_weight[-1] = self.eos_coef
         self.register_buffer("empty_weight", empty_weight)
 
