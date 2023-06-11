@@ -112,10 +112,13 @@ def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, use_sta
                                     dice_weight=1.0,
                                     cls_weight=1.0,
                                     loss_weight=1.0)
-            ground_losses = atm_loss.forward(student_pred, label, ignore_index=0)
+            ground_losses = atm_loss(student_pred, label, ignore_index=0)
             ground_losses = ground_losses['loss_ce'] + ground_losses['loss_mask'] + ground_losses['loss_dice']
-            teacher_losses = F.cross_entropy(student_pred['pred_logits'].permute(0, 2, 3, 1).contiguous().view(-1, 151), teacher_pred['pred_logits'].permute(0, 2, 3, 1).contiguous().view(-1, 151)) + \
-                                F.mse_loss(student_pred['pred_masks'], teacher_pred['pred_masks'])
+            teacher_losses = 0
+            for i in range(len(teacher_pred['aux_outputs'][3 - use_stages:])):
+                teacher_losses += (F.cross_entropy(student_pred['aux_outputs'][i]['pred_logits'].permute(0, 2, 3, 1).contiguous().view(-1, 151), 
+                                        teacher_pred['aux_outputs'][3 - use_stages + i]['pred_logits'].permute(0, 2, 3, 1).contiguous().view(-1, 151)) + \
+                                    F.mse_loss(student_pred['aux_outputs'][i]['pred_masks'], teacher_pred['aux_outputs'][3 - use_stages + i]['pred_masks']))
             # combine two kinds of losses; dtpye=torch.tensor
             loss = ground_losses * args.ground_w + teacher_losses * args.teacher_w 
 
