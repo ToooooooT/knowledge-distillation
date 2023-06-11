@@ -66,7 +66,7 @@ def parse_args():
     return args
 
 
-def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, args, enable_amp=True):
+def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, use_stages, args):
     # inference teacher prediction
     # transform = transforms.Compose([
     #     transforms.Resize((args.img_size, args.img_size), antialias=True)
@@ -82,7 +82,6 @@ def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, args, e
     #     # Create a mask where the label is 0, shape will be [1, H, W]
     #     mask = (label == 0)
     #     teacher_pred[:, 0, :, :] = (teacher_pred[:, 0, :, :].to(torch.int) | mask.squeeze().to(torch.int)).to(torch.float)
-
 
     # TODO: segvit loss function from paper
     if isinstance(student, tuple):
@@ -107,7 +106,7 @@ def train(teacher: nn.Module, student: nn.Module, img, label, optimizer, args, e
             student_pred = student(img)
             # TODO: setting of ATMLoss
             atm_loss = ATMLoss(num_classes=151,
-                                    dec_layers=1,
+                                    dec_layers=use_stages,
                                     mask_weight=20.0,
                                     dice_weight=1.0,
                                     cls_weight=1.0,
@@ -158,6 +157,8 @@ def main():
     
     out_indices = [2, 5]
     use_stages = 2
+
+    assert use_stages == len(out_indices)
 
     if args.model_dir != '':
         # load model and continue training from checkpoint
@@ -296,11 +297,11 @@ def main():
             img = img.to(device)
             label = label.to(device)
             if args.model_type == 'fuse':
-                loss1, loss2 = train(teacher, (student1, student2), img, label, optimizer, args)
+                loss1, loss2 = train(teacher, (student1, student2), img, label, optimizer, use_stages, args)
                 epoch_loss1 += loss1
                 epoch_loss2 += loss2
             else:
-                loss = train(teacher, student, img, label, optimizer, args)
+                loss = train(teacher, student, img, label, optimizer, use_stages, args)
                 epoch_loss += loss
 
         with open(f'./{args.log_dir}/train_record.txt', 'a') as f:
